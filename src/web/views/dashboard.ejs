@@ -5,6 +5,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css" rel="stylesheet">
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
             min-height: 100vh;
@@ -209,6 +210,47 @@
             color: #888;
             margin-bottom: 2px;
         }
+        /* 修改表情选择器样式 */
+        .emoji-picker {
+            position: absolute;
+            bottom: 100%;
+            right: 0;
+            width: 300px;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 10px;
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 5px;
+            max-height: 200px;
+            overflow-y: auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+        .emoji-item {
+            cursor: pointer;
+            text-align: center;
+            padding: 5px;
+            font-size: 20px;
+            transition: background-color 0.2s;
+            border-radius: 4px;
+        }
+        .emoji-item:hover {
+            background: #f8f9fa;
+        }
+        /* 修改输入工具栏样式 */
+        .input-toolbar {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            gap: 5px;
+        }
+        .input-toolbar button {
+            padding: 4px 8px;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
@@ -248,9 +290,18 @@
             <a class="nav-link" href="#" onclick="showSection('log-view')">
                 <i class="bi bi-terminal stats-icon"></i>日志查看
             </a>
-            <a class="nav-link text-danger mt-auto" href="/logout">
+            <a class="nav-link text-danger" href="/logout">
                 <i class="bi bi-box-arrow-right stats-icon"></i>退出登录
             </a>
+            <!-- 添加加密文本 -->
+            <div class="text-muted small text-center mt-3 mb-3" style="opacity: 0.5;">
+                <script>
+                    // 使用 encodeURIComponent 和 btoa 组合编码
+                    const text = '©2025 || 林间言';
+                    const encoded = btoa(encodeURIComponent(text));
+                    document.write(decodeURIComponent(atob(encoded)));
+                </script>
+            </div>
         </div>
     </div>
 
@@ -258,112 +309,140 @@
     <div class="main-content">
         <!-- 机器人信息 -->
         <div id="bot-info" class="content-section active">
-            <h4 class="mb-4">机器人信息</h4>
-            <div class="row">
-                <div class="col-md-6 mb-4">
-                    <div class="card status-card">
-                        <div class="card-header">
-                            <h5 class="mb-0">基本信息</h5>
+            <!-- 修改监控图表卡片 -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">系统资源监控</h5>
+                    <small class="text-muted" id="monitor-update-time"></small>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div style="height: 150px;">
+                                <canvas id="cpuChart"></canvas>
+                            </div>
                         </div>
-                        <div class="card-body">
-                            <div class="d-flex align-items-center mb-3">
-                                <i class="bi bi-person-badge stats-icon"></i>
-                                <div>
-                                    <small class="text-muted">QQ账号</small>
-                                    <div id="bot-qq"><%= botInfo.qq %></div>
-                                </div>
+                        <div class="col-md-6">
+                            <div style="height: 150px;">
+                                <canvas id="memoryChart"></canvas>
                             </div>
-                            <div class="d-flex align-items-center mb-3">
-                                <i class="bi bi-person stats-icon"></i>
-                                <div>
-                                    <small class="text-muted">昵称</small>
-                                    <div id="bot-nickname"><%= botInfo.nickname %></div>
-                                </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <div class="text-center">
+                                <div class="small text-muted">CPU使用率</div>
+                                <div class="h5 mb-0" id="cpu-usage">0%</div>
                             </div>
-                            <div class="d-flex align-items-center mb-3">
-                                <i class="bi bi-people stats-icon"></i>
-                                <div>
-                                    <small class="text-muted">好友数量</small>
-                                    <div id="friend-count"><%= botInfo.friends %></div>
-                                </div>
-                            </div>
-                            <div class="d-flex align-items-center">
-                                <i class="bi bi-chat-dots stats-icon"></i>
-                                <div>
-                                    <small class="text-muted">群聊数量</small>
-                                    <div id="group-count"><%= botInfo.groups %></div>
-                                </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="text-center">
+                                <div class="small text-muted">内存使用</div>
+                                <div class="h5 mb-0" id="memory-usage">0 MB / 0 GB</div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-6 mb-4">
-                    <div class="card status-card">
-                        <div class="card-header">
-                            <h5 class="mb-0">系统状态</h5>
+            </div>
+
+            <!-- 原有的机器人信息卡片 -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">基本信息</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="bi bi-person-badge stats-icon"></i>
+                        <div>
+                            <small class="text-muted">QQ账号</small>
+                            <div id="bot-qq"><%= botInfo.qq %></div>
                         </div>
-                        <div class="card-body">
-                            <div class="d-flex align-items-center mb-3">
-                                <i class="bi bi-clock-history stats-icon"></i>
-                                <div>
-                                    <small class="text-muted">运行时间</small>
-                                    <div id="uptime"><%= botInfo.uptime %></div>
-                                </div>
-                            </div>
-                            <div class="d-flex align-items-center mb-3">
-                                <i class="bi bi-chat-dots stats-icon"></i>
-                                <div>
-                                    <small class="text-muted">今日回复</small>
-                                    <div id="daily-reply-count"><%= botInfo.dailyReplyCount %>次</div>
-                                </div>
-                            </div>
-                            <div class="d-flex align-items-center">
-                                <i class="bi bi-quote stats-icon"></i>
-                                <div>
-                                    <small class="text-muted">每日一言</small>
-                                    <div id="daily-word" class="text-wrap"><%= botInfo.dailyWord %></div>
-                                </div>
-                            </div>
+                    </div>
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="bi bi-person stats-icon"></i>
+                        <div>
+                            <small class="text-muted">昵称</small>
+                            <div id="bot-nickname"><%= botInfo.nickname %></div>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="bi bi-people stats-icon"></i>
+                        <div>
+                            <small class="text-muted">好友数量</small>
+                            <div id="friend-count"><%= botInfo.friends %></div>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-chat-dots stats-icon"></i>
+                        <div>
+                            <small class="text-muted">群聊数量</small>
+                            <div id="group-count"><%= botInfo.groups %></div>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-12 mb-4">
-                    <div class="card status-card">
-                        <div class="card-header">
-                            <h5 class="mb-0">发送消息</h5>
-                        </div>
-                        <div class="card-body">
-                            <form id="send-message-form">
-                                <div class="row g-3">
-                                    <div class="col-md-2">
-                                        <label class="form-label">消息类型</label>
-                                        <select class="form-select" id="message-type" required>
-                                            <option value="private">私聊消息</option>
-                                            <option value="group">群消息</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <label class="form-label">目标ID</label>
-                                        <div class="input-group">
-                                            <input type="number" class="form-control" id="target-id" required>
-                                            <button type="button" class="btn btn-outline-secondary" onclick="showSelector()">
-                                                <i class="bi bi-list"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-5">
-                                        <label class="form-label">消息内容</label>
-                                        <input type="text" class="form-control" id="message-content" required>
-                                    </div>
-                                    <div class="col-md-2 d-flex align-items-end">
-                                        <button type="submit" class="btn btn-primary w-100">
-                                            <i class="bi bi-send"></i> 发送
-                                        </button>
-                                    </div>
-                                </div>
-                            </form>
+            </div>
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">系统状态</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="bi bi-clock-history stats-icon"></i>
+                        <div>
+                            <small class="text-muted">运行时间</small>
+                            <div id="uptime"><%= botInfo.uptime %></div>
                         </div>
                     </div>
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="bi bi-chat-dots stats-icon"></i>
+                        <div>
+                            <small class="text-muted">今日回复</small>
+                            <div id="daily-reply-count"><%= botInfo.dailyReplyCount %>次</div>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <i class="bi bi-quote stats-icon"></i>
+                        <div>
+                            <small class="text-muted">每日一言</small>
+                            <div id="daily-word" class="text-wrap"><%= botInfo.dailyWord %></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">发送消息</h5>
+                </div>
+                <div class="card-body">
+                    <form id="send-message-form">
+                        <div class="row g-3">
+                            <div class="col-md-2">
+                                <label class="form-label">消息类型</label>
+                                <select class="form-select" id="message-type" required>
+                                    <option value="private">私聊消息</option>
+                                    <option value="group">群消息</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">目标ID</label>
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="target-id" required>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="showSelector()">
+                                        <i class="bi bi-list"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label">消息内容</label>
+                                <input type="text" class="form-control" id="message-content" required>
+                            </div>
+                            <div class="col-md-2 d-flex align-items-end">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-send"></i> 发送
+                                </button>
+                            </div>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -624,32 +703,44 @@
         // 监听状态更新
         socket.on('status', updateStatus);
 
-        // 监听私聊消息
+        // 修改 socket.on('privateMessage') 处理
         socket.on('privateMessage', (data) => {
             try {
                 console.log('收到私聊消息:', data);
                 if (!data || !currentChatTarget) return;
 
-                // 如果消息来自当前聊天的用户，则显示消息
-                if (data.sender_id === parseInt(currentChatTarget)) {
-                    // 处理不同类型的消息
-                    if (Array.isArray(data.message)) {
+                // 检查消息是否来自当前聊天的用户
+                const senderId = parseInt(data.user_id || data.sender_id);
+                if (senderId === parseInt(currentChatTarget)) {
+                    // 处理消息内容
+                    let messageContent = '';
+                    
+                    // 处理不同类型的消息格式
+                    if (typeof data.message === 'string') {
+                        messageContent = data.message;
+                    } else if (Array.isArray(data.message)) {
+                        // 处理消息数组
                         data.message.forEach(msg => {
-                            if (msg.type === 'text') {
-                                addMessage(msg.text, false);
+                            if (typeof msg === 'string') {
+                                messageContent += msg;
+                            } else if (msg.type === 'text') {
+                                messageContent += msg.text;
                             } else if (msg.type === 'image') {
-                                addMessage(msg.file, false);
+                                messageContent = msg.file; // 图片URL
                             }
                         });
                     } else if (typeof data.message === 'object') {
+                        // 处理消息对象
                         if (data.message.type === 'text') {
-                            addMessage(data.message.text, false);
+                            messageContent = data.message.text;
                         } else if (data.message.type === 'image') {
-                            addMessage(data.message.file, false);
+                            messageContent = data.message.file;
                         }
-                    } else {
-                        // 直接显示消息内容
-                        addMessage(data.raw_message || data.message || '', false);
+                    }
+
+                    // 如果有消息内容则显示
+                    if (messageContent) {
+                        addMessage(messageContent, false);
                     }
                 }
             } catch (error) {
@@ -1232,39 +1323,6 @@
             }
         }
 
-        // 修改 socket.on('privateMessage') 处理
-        socket.on('privateMessage', (data) => {
-            try {
-                console.log('收到私聊消息:', data);
-                if (!data || !currentChatTarget) return;
-
-                // 如果消息来自当前聊天的用户，则显示消息
-                if (data.sender_id === parseInt(currentChatTarget)) {
-                    // 处理不同类型的消息
-                    if (Array.isArray(data.message)) {
-                        data.message.forEach(msg => {
-                            if (msg.type === 'text') {
-                                addMessage(msg.text, false);
-                            } else if (msg.type === 'image') {
-                                addMessage(msg.file, false);
-                            }
-                        });
-                    } else if (typeof data.message === 'object') {
-                        if (data.message.type === 'text') {
-                            addMessage(data.message.text, false);
-                        } else if (data.message.type === 'image') {
-                            addMessage(data.message.file, false);
-                        }
-                    } else {
-                        // 直接显示消息内容
-                        addMessage(data.raw_message || data.message, false);
-                    }
-                }
-            } catch (error) {
-                console.error('处理私聊消息失败:', error);
-            }
-        });
-
         // 修改 sendImage 函数的错误处理
         async function sendImage(url) {
             if (!currentChatTarget) return;
@@ -1309,6 +1367,71 @@
                     console.error('消息发送失败:', data.error);
                     alert('发送失败: ' + (data.error || '未知错误'));
                 }
+            }
+        });
+
+        // 添加图表初始化和更新代码
+        const chartOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    display: false
+                },
+                title: {
+                    display: false
+                }
+            },
+            cutout: '75%'
+        };
+
+        const cpuChart = new Chart(document.getElementById('cpuChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['使用', '空闲'],
+                datasets: [{
+                    data: [0, 100],
+                    backgroundColor: ['#ff6384', '#f8f9fa'],
+                    borderWidth: 0
+                }]
+            },
+            options: chartOptions
+        });
+
+        const memoryChart = new Chart(document.getElementById('memoryChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['已用', '可用'],
+                datasets: [{
+                    data: [0, 100],
+                    backgroundColor: ['#36a2eb', '#f8f9fa'],
+                    borderWidth: 0
+                }]
+            },
+            options: chartOptions
+        });
+
+        // 修改更新图表数据的代码
+        socket.on('status', (data) => {
+            if (data.systemStats) {
+                // 更新时间
+                document.getElementById('monitor-update-time').textContent = 
+                    `最后更新: ${new Date().toLocaleTimeString()}`;
+
+                // 更新 CPU 图表和数值
+                const cpuUsage = Math.round(data.systemStats.cpu.usage);
+                cpuChart.data.datasets[0].data = [cpuUsage, 100 - cpuUsage];
+                cpuChart.update();
+                document.getElementById('cpu-usage').textContent = `${cpuUsage}%`;
+
+                // 更新内存图表和数值
+                const memoryTotal = Math.round(data.systemStats.memory.total / 1024 / 1024 / 1024);
+                const memoryUsed = Math.round(data.systemStats.memory.used / 1024 / 1024);
+                const memoryUsage = Math.round((data.systemStats.memory.used / data.systemStats.memory.total) * 100);
+                memoryChart.data.datasets[0].data = [memoryUsage, 100 - memoryUsage];
+                memoryChart.update();
+                document.getElementById('memory-usage').textContent = 
+                    `${memoryUsed} MB / ${memoryTotal} GB`;
             }
         });
     </script>

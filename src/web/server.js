@@ -5,6 +5,7 @@ const socketIO = require('socket.io')
 const path = require('path')
 const multer = require('multer')
 const fs = require('fs')
+const os = require('os')
 
 class WebPanel {
     constructor(bot) {
@@ -15,6 +16,7 @@ class WebPanel {
         this.setupExpress()
         this.setupRoutes()
         this.setupWebSocket()
+        this.setupMessageListener()
     }
 
     setupExpress() {
@@ -288,60 +290,103 @@ class WebPanel {
             console.log('WebSocket 客户端已连接')
 
             // 发送实时状态更新
-            const sendStatus = () => {
-                socket.emit('status', {
-                    online: this.bot.client.isOnline(),
-                    botInfo: this.bot.botInfo,
-                    stats: {
-                        uptime: process.uptime(),
-                        memory: process.memoryUsage(),
-                        friends: this.bot.client.fl.size,
-                        lastUpdate: new Date().toLocaleString()
-                    }
-                })
+            const sendStatus = async () => {
+                try {
+                    // 获取 CPU 使用率
+                    const cpuUsage = await this.getCpuUsage();
+                    
+                    const totalMem = os.totalmem();
+                    const freeMem = os.freemem();
+                    const usedMem = totalMem - freeMem;
+
+                    socket.emit('status', {
+                        online: this.bot.client.isOnline(),
+                        botInfo: this.bot.botInfo,
+                        stats: {
+                            uptime: process.uptime(),
+                            memory: process.memoryUsage(),
+                            friends: this.bot.client.fl.size,
+                            lastUpdate: new Date().toLocaleString()
+                        },
+                        systemStats: {
+                            cpu: {
+                                usage: cpuUsage
+                            },
+                            memory: {
+                                total: totalMem,
+                                used: usedMem,
+                                free: freeMem
+                            }
+                        }
+                    });
+                } catch (error) {
+                    console.error('发送状态更新失败:', error);
+                }
             }
 
             // 立即发送一次状态
-            sendStatus()
+            sendStatus();
 
             // 定期发送状态更新
-            const statusInterval = setInterval(sendStatus, 5000)
-
-            // 监听消息发送成功事件
-            this.bot.client.on('message.send', (event) => {
-                if (event.message_type === 'private') {
-                    socket.emit('messageSent', {
-                        success: true,
-                        target_id: event.user_id,
-                        message: event.message
-                    });
-                }
-            });
-
-            // 添加私聊消息监听
-            this.bot.client.on('message.private', (event) => {
-                socket.emit('privateMessage', {
-                    sender_id: event.sender.user_id,
-                    sender_name: event.sender.nickname,
-                    message: event.message,
-                    raw_message: event.raw_message
-                })
-            })
+            const statusInterval = setInterval(sendStatus, 5000);
 
             socket.on('disconnect', () => {
-                clearInterval(statusInterval)
-                console.log('WebSocket 客户端已断开')
-            })
-        })
+                clearInterval(statusInterval);
+                console.log('WebSocket 客户端已断开');
+            });
+        });
 
         // 监听日志事件
         this.bot.logManager.on('newLog', (log) => {
             this.io.emit('log', log)
-        })
+        });
 
         this.bot.logManager.on('logsCleared', () => {
             this.io.emit('logsCleared')
-        })
+        });
+    }
+
+    // 添加消息监听设置方法
+    setupMessageListener() {
+        // 监听私聊消息
+        this.bot.client.on('message.private', (event) => {
+            // 转发消息到所有连接的 WebSocket 客户端
+            this.io.emit('privateMessage', {
+                user_id: event.sender.user_id,
+                sender_id: event.sender.user_id,
+                message: event.message,
+                raw_message: event.raw_message,
+                time: event.time
+            });
+        });
+    }
+
+    // 将 getCpuUsage 作为类的方法
+    async getCpuUsage() {
+        return new Promise((resolve) => {
+            const startMeasure = os.cpus().map(cpu => ({
+                idle: cpu.times.idle,
+                total: Object.values(cpu.times).reduce((acc, tv) => acc + tv, 0)
+            }));
+
+            // 等待一段时间后再次测量
+            setTimeout(() => {
+                const endMeasure = os.cpus().map(cpu => ({
+                    idle: cpu.times.idle,
+                    total: Object.values(cpu.times).reduce((acc, tv) => acc + tv, 0)
+                }));
+
+                const idleDifference = endMeasure.map((end, i) => end.idle - startMeasure[i].idle);
+                const totalDifference = endMeasure.map((end, i) => end.total - startMeasure[i].total);
+
+                const averageUsage = idleDifference.reduce((acc, idle, i) => {
+                    const usage = 100 - (idle / totalDifference[i]) * 100;
+                    return acc + usage;
+                }, 0) / os.cpus().length;
+
+                resolve(Math.round(averageUsage));
+            }, 100);
+        });
     }
 
     start(port = 3000) {
